@@ -1,3 +1,7 @@
+//
+// Created by yu on 7/27/16.
+//
+
 #ifndef LSTM_CNN_EVAL_H
 #define LSTM_CNN_EVAL_H
 

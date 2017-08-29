@@ -13,7 +13,6 @@ CRFBuilder::CRFBuilder(cnn::Model *model, boost::program_options::variables_map 
   rev_lstm(conf["layers"].as<unsigned>(), conf["lstm_input_dim"].as<unsigned>(), conf["lstm_hidden_dim"].as<unsigned>(), model) {
 
   dropout_rate = conf["dropout"].as<float>();
-  use_radical = (conf["use_radical"].as<unsigned>() == 1);
   use_train = (conf["use_train"].as<unsigned>() == 1);
   is_finetune = (conf["finetune"].as<unsigned>() == 1);
   is_ofinetune = (conf["ofinetune"].as<unsigned>() == 1);
@@ -28,11 +27,9 @@ CRFBuilder::CRFBuilder(cnn::Model *model, boost::program_options::variables_map 
   unsigned BIGRAM_DIM = conf["bigram_dim"].as<unsigned>();
   unsigned N_UNIGRAMS = corpus.max_unigram;
   unsigned N_BIGRAMS = corpus.max_bigram;
-  unsigned N_RADICALS = corpus.max_radical;
   unsigned N_LABELS = static_cast<int>(corpus.id2label.size());
   unsigned LABEL_DIM = conf["label_dim"].as<unsigned>();
   unsigned HIDDEN_DIM = conf["hidden_dim"].as<unsigned>();
-  unsigned RADICAL_DIM = conf["radical_dim"].as<unsigned>();
 
   n_labels = N_LABELS;
   p_u = model->add_lookup_parameters(N_UNIGRAMS, {UNIGRAM_DIM});
@@ -78,15 +75,6 @@ CRFBuilder::CRFBuilder(cnn::Model *model, boost::program_options::variables_map 
     p_pob2l = nullptr;
   }
 
-  if (use_radical){
-    p_r = model->add_lookup_parameters(N_RADICALS, {RADICAL_DIM});
-    p_r2l = model->add_parameters({LSTM_INPUT_DIM, RADICAL_DIM});
-  }
-  else{
-    p_r = nullptr;
-    p_r2l = nullptr;
-  }
-
   p_u2l = model->add_parameters({LSTM_INPUT_DIM, UNIGRAM_DIM});
   p_b2l = model->add_parameters({LSTM_INPUT_DIM, BIGRAM_DIM});
   p_lb = model->add_parameters({LSTM_INPUT_DIM});
@@ -121,11 +109,8 @@ CRFBuilder::CRFBuilder(cnn::Model *model, boost::program_options::variables_map 
 }
 
 Expression CRFBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::vector<unsigned int> &raw_unigrams,
-                                       const std::vector<unsigned int> &raw_bigrams,
-                                       const std::vector<unsigned int> &unigrams,
-                                       const std::vector<unsigned int> &bigrams,
-                                       const std::vector<unsigned int> &radicals,
-                                       const std::vector<unsigned int> &labels) {
+                                       const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
+                                       const std::vector<unsigned int> &bigrams, const std::vector<unsigned int> &labels) {
   unsigned len = static_cast<int>(unigrams.size());
   BOOST_ASSERT_MSG( len == labels.size(), "label and sentence size not match" );
 
@@ -142,10 +127,9 @@ Expression CRFBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::vec
   Expression lb = parameter(*cg, p_lb);
   Expression u2l = parameter(*cg, p_u2l);
   Expression b2l = parameter(*cg, p_b2l);
-  Expression pu2l, pb2l, r2l, pou2l, pob2l;
+  Expression pu2l, pb2l, pou2l, pob2l;
   if (p_pu2l) { pu2l = parameter(*cg, p_pu2l); }
   if (p_pb2l) { pb2l = parameter(*cg, p_pb2l); }
-  if (use_radical) { r2l = parameter(*cg, p_r2l); }
   if (p_pou2l) {pou2l = parameter(*cg, p_pou2l); }
   if (p_pob2l) {pob2l = parameter(*cg, p_pob2l); }
 
@@ -187,10 +171,6 @@ Expression CRFBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::vec
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
       }
 
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
-      }
     }
     else{
       BOOST_ASSERT(p_pu2l != nullptr);
@@ -211,20 +191,16 @@ Expression CRFBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::vec
       if(p_pou2l) {
         if (ounigram_pretrained.count(raw_unigrams[i])) idx = raw_unigrams[i];
         else idx = UNK_IDX;
-        if(is_finetune) pou = lookup(*cg, p_pou, idx);
+        if(is_ofinetune) pou = lookup(*cg, p_pou, idx);
         else pou = const_lookup(*cg, p_pou, idx);
         inputs[i] = affine_transform({inputs[i], pou2l, pou});
       }
       if(p_pob2l){
         if (obigram_pretrained.count(raw_bigrams[i])) idx = raw_bigrams[i];
         else idx = UNK_IDX;
-        if (is_finetune) pob = lookup(*cg, p_pob, idx);
+        if (is_ofinetune) pob = lookup(*cg, p_pob, idx);
         else pob = const_lookup(*cg, p_pob, idx);
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
-      }
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
       }
     }
     inputs[i] = tanh(inputs[i]);
@@ -303,9 +279,8 @@ Expression CRFBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::vec
 
 
 void CRFBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned int> &raw_unigrams,
-                           const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
-                           const std::vector<unsigned int> &bigrams, const std::vector<unsigned int> &radicals,
-                           std::vector<unsigned int> &pred_labels) {
+                        const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
+                        const std::vector<unsigned int> &bigrams, std::vector<unsigned int> &pred_labels) {
   unsigned len = static_cast<int>(unigrams.size());
   std::vector<std::vector<double>> emit_matrix(len, std::vector<double>(n_labels));
   std::vector<std::vector<double>> tran_matrix(n_labels, std::vector<double>(n_labels));
@@ -321,10 +296,9 @@ void CRFBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned in
   Expression lb = parameter(*cg, p_lb);
   Expression u2l = parameter(*cg, p_u2l);
   Expression b2l = parameter(*cg, p_b2l);
-  Expression pu2l, pb2l, r2l, pou2l, pob2l;
+  Expression pu2l, pb2l, pou2l, pob2l;
   if (p_pu2l) { pu2l = parameter(*cg, p_pu2l); }
   if (p_pb2l) { pb2l = parameter(*cg, p_pb2l); }
-  if (use_radical) { r2l = parameter(*cg, p_r2l); }
   if (p_pou2l) {pou2l = parameter(*cg, p_pou2l); }
   if (p_pob2l) {pob2l = parameter(*cg, p_pob2l); }
 
@@ -362,10 +336,6 @@ void CRFBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned in
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
       }
 
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
-      }
     }
     else{
       BOOST_ASSERT(p_pu2l != nullptr);
@@ -392,10 +362,6 @@ void CRFBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned in
         else idx = UNK_IDX;
         pob = const_lookup(*cg, p_pob, idx);
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
-      }
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
       }
     }
     inputs[i] = tanh(inputs[i]);
@@ -493,7 +459,8 @@ void CRFBuilder::set_valid_trans(const std::vector<std::string> &id2labels) {
   valid_trans.insert(Sid*4 + Bid);
 }
 
-void CRFBuilder::get_valid_labels(std::vector<unsigned int> &cur_valid_labels, unsigned int len, int cur_position,
+void CRFBuilder::get_valid_labels(std::vector<unsigned int> &cur_valid_labels, unsigned int len,
+                                  unsigned int cur_position,
                                   std::vector<unsigned int> &pred_labels) {
   if(cur_position == 0){
     if(cur_position == len-1){

@@ -13,7 +13,6 @@ GreedyBuilder::GreedyBuilder(cnn::Model *model, boost::program_options::variable
   rev_lstm(conf["layers"].as<unsigned>(), conf["lstm_input_dim"].as<unsigned>(), conf["lstm_hidden_dim"].as<unsigned>(), model) {
 
   dropout_rate = conf["dropout"].as<float>();
-  use_radical = (conf["use_radical"].as<unsigned>() == 1);
   use_train = (conf["use_train"].as<unsigned>() == 1);
   is_finetune = (conf["finetune"].as<unsigned>() == 1);
   is_ofinetune = (conf["ofinetune"].as<unsigned>() == 1);
@@ -21,18 +20,16 @@ GreedyBuilder::GreedyBuilder(cnn::Model *model, boost::program_options::variable
 
   BOOST_ASSERT_MSG(use_train or unigram_pretrained.size() > 0 or ounigram_pretrained.size() > 0, "No input features");
 
-  unsigned LAYERS = conf["layers"].as<unsigned>();
+  // unsigned LAYERS = conf["layers"].as<unsigned>();
   unsigned LSTM_INPUT_DIM = conf["lstm_input_dim"].as<unsigned>();
   unsigned LSTM_HIDDEN_DIM = conf["lstm_hidden_dim"].as<unsigned>();
   unsigned UNIGRAM_DIM = conf["unigram_dim"].as<unsigned>();
   unsigned BIGRAM_DIM = conf["bigram_dim"].as<unsigned>();
   unsigned N_UNIGRAMS = corpus.max_unigram;
   unsigned N_BIGRAMS = corpus.max_bigram;
-  unsigned N_RADICALS = corpus.max_radical;
   unsigned N_LABELS = static_cast<int>(corpus.id2label.size());
   unsigned LABEL_DIM = conf["label_dim"].as<unsigned>();
   unsigned HIDDEN_DIM = conf["hidden_dim"].as<unsigned>();
-  unsigned RADICAL_DIM = conf["radical_dim"].as<unsigned>();
 
   n_labels = N_LABELS;
   p_u = model->add_lookup_parameters(N_UNIGRAMS, {UNIGRAM_DIM});
@@ -78,15 +75,6 @@ GreedyBuilder::GreedyBuilder(cnn::Model *model, boost::program_options::variable
     p_pob2l = nullptr;
   }
 
-  if (use_radical){
-    p_r = model->add_lookup_parameters(N_RADICALS, {RADICAL_DIM});
-    p_r2l = model->add_parameters({LSTM_INPUT_DIM, RADICAL_DIM});
-  }
-  else{
-    p_r = nullptr;
-    p_r2l = nullptr;
-  }
-
   p_u2l = model->add_parameters({LSTM_INPUT_DIM, UNIGRAM_DIM});
   p_b2l = model->add_parameters({LSTM_INPUT_DIM, BIGRAM_DIM});
   p_lb = model->add_parameters({LSTM_INPUT_DIM});
@@ -110,7 +98,7 @@ GreedyBuilder::GreedyBuilder(cnn::Model *model, boost::program_options::variable
 
   std::string label;
   id2label = corpus.id2label;
-  for (int i=0; i<corpus.id2label.size(); i++){
+  for (auto i=0; i<corpus.id2label.size(); i++){
     label = corpus.id2label[i];
     if (label == "B") B = i;
     else if(label == "M") M = i;
@@ -121,11 +109,8 @@ GreedyBuilder::GreedyBuilder(cnn::Model *model, boost::program_options::variable
 }
 
 Expression GreedyBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::vector<unsigned int> &raw_unigrams,
-                                       const std::vector<unsigned int> &raw_bigrams,
-                                       const std::vector<unsigned int> &unigrams,
-                                       const std::vector<unsigned int> &bigrams,
-                                       const std::vector<unsigned int> &radicals,
-                                       const std::vector<unsigned int> &labels) {
+                                          const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
+                                          const std::vector<unsigned int> &bigrams, const std::vector<unsigned int> &labels) {
   unsigned len = static_cast<int>(unigrams.size());
 
   BOOST_ASSERT_MSG( len == labels.size(), "label and sentence size not match" );
@@ -133,10 +118,9 @@ Expression GreedyBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::
   Expression lb = parameter(*cg, p_lb);
   Expression u2l = parameter(*cg, p_u2l);
   Expression b2l = parameter(*cg, p_b2l);
-  Expression pu2l, pb2l, r2l, pou2l, pob2l;
+  Expression pu2l, pb2l, pou2l, pob2l;
   if (p_pu2l) { pu2l = parameter(*cg, p_pu2l); }
   if (p_pb2l) { pb2l = parameter(*cg, p_pb2l); }
-  if (use_radical) { r2l = parameter(*cg, p_r2l); }
   if (p_pou2l) {pou2l = parameter(*cg, p_pou2l); }
   if (p_pob2l) {pob2l = parameter(*cg, p_pob2l); }
 
@@ -166,21 +150,16 @@ Expression GreedyBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::
       if(p_pou2l) {
         if (ounigram_pretrained.count(raw_unigrams[i])) idx = raw_unigrams[i];
         else idx = UNK_IDX;
-        if(is_finetune) pou = lookup(*cg, p_pou, idx);
+        if(is_ofinetune) pou = lookup(*cg, p_pou, idx);
         else pou = const_lookup(*cg, p_pou, idx);
         inputs[i] = affine_transform({inputs[i], pou2l, pou});
       }
       if(p_pob2l){
         if (obigram_pretrained.count(raw_bigrams[i])) idx = raw_bigrams[i];
         else idx = UNK_IDX;
-        if (is_finetune) pob = lookup(*cg, p_pob, idx);
+        if (is_ofinetune) pob = lookup(*cg, p_pob, idx);
         else pob = const_lookup(*cg, p_pob, idx);
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
-      }
-
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
       }
     }
     else{
@@ -212,10 +191,6 @@ Expression GreedyBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::
         if (is_finetune) pob = lookup(*cg, p_pob, idx);
         else pob = const_lookup(*cg, p_pob, idx);
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
-      }
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
       }
     }
     inputs[i] = tanh(inputs[i]);
@@ -273,17 +248,15 @@ Expression GreedyBuilder::supervised_loss(cnn::ComputationGraph *cg, const std::
 
 void GreedyBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned int> &raw_unigrams,
                            const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
-                           const std::vector<unsigned int> &bigrams, const std::vector<unsigned int> &radicals,
-                           std::vector<unsigned int> &pred_labels) {
+                           const std::vector<unsigned int> &bigrams, std::vector<unsigned int> &pred_labels) {
   unsigned len = static_cast<int>(unigrams.size());
 
   Expression lb = parameter(*cg, p_lb);
   Expression u2l = parameter(*cg, p_u2l);
   Expression b2l = parameter(*cg, p_b2l);
-  Expression pu2l, pb2l, r2l, pou2l, pob2l;
+  Expression pu2l, pb2l, pou2l, pob2l;
   if (p_pu2l) { pu2l = parameter(*cg, p_pu2l); }
   if (p_pb2l) { pb2l = parameter(*cg, p_pb2l); }
-  if (use_radical) { r2l = parameter(*cg, p_r2l); }
   if (p_pou2l) {pou2l = parameter(*cg, p_pou2l); }
   if (p_pob2l) {pob2l = parameter(*cg, p_pob2l); }
 
@@ -321,10 +294,6 @@ void GreedyBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
       }
 
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
-      }
     }
     else{
       BOOST_ASSERT(p_pu2l != nullptr);
@@ -351,10 +320,6 @@ void GreedyBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned
         else idx = UNK_IDX;
         pob = const_lookup(*cg, p_pob, idx);
         inputs[i] = affine_transform({inputs[i], pob2l, pob});
-      }
-      if (use_radical) {
-        Expression r = lookup(*cg, p_r, radicals[i]);
-        inputs[i] = affine_transform({inputs[i], r2l, r});
       }
     }
     inputs[i] = tanh(inputs[i]);
@@ -397,7 +362,7 @@ void GreedyBuilder::decode(cnn::ComputationGraph *cg, const std::vector<unsigned
     Expression output;
     hidden = dropout(tanh(affine_transform({hb, bi2h, bi_hiddens[i]})), dropout_rate);
     output = affine_transform({ob, h2o, hidden});
-    Expression log_p = log_softmax(output, cur_valid_labels);
+    // Expression log_p = log_softmax(output, cur_valid_labels);
     std::vector<float> log_pvalues = as_vector(cg->incremental_forward());
     unsigned index = std::distance(log_pvalues.begin(), std::max_element(log_pvalues.begin(), log_pvalues.end()));
     pred_labels.push_back(index);
@@ -426,8 +391,9 @@ void GreedyBuilder::set_valid_trans(const std::vector<std::string> &id2labels) {
   valid_trans.insert(Sid*4 + Bid);
 }
 
-void GreedyBuilder::get_valid_labels(std::vector<unsigned int> &cur_valid_labels, unsigned int len, int cur_position,
-                                  std::vector<unsigned int> &pred_labels) {
+void GreedyBuilder::get_valid_labels(std::vector<unsigned int> &cur_valid_labels, unsigned int len,
+                                     unsigned int cur_position,
+                                     std::vector<unsigned int> &pred_labels) {
   if(cur_position == 0){
     if(cur_position == len-1){
       cur_valid_labels.push_back(S);

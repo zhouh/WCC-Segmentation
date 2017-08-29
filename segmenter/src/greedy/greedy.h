@@ -1,8 +1,8 @@
-#ifndef __GREEDY_H__
-#define __GREEDY_H__
+#ifndef __CRF_H__
+#define __CRF_H__
 
 #include <boost/program_options/variables_map.hpp>
-#include "corpus.h"
+#include "../corpus.h"
 #include <bits/unordered_map.h>
 #include <unordered_map>
 #include "cnn/cnn.h"
@@ -22,20 +22,16 @@ struct GreedyBuilder {
   typedef std::vector<cnn::expr::Expression> ExpressionRow;
 
   Expression supervised_loss(cnn::ComputationGraph *cg, const std::vector<unsigned int> &raw_unigrams,
-                               const std::vector<unsigned int> &raw_bigrams,
-                               const std::vector<unsigned int> &unigrams,
-                               const std::vector<unsigned int> &bigrams,
-                               const std::vector<unsigned int> &radicals,
-                               const std::vector<unsigned int> &labels);
+                               const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
+                               const std::vector<unsigned int> &bigrams, const std::vector<unsigned int> &labels);
 
   void decode(cnn::ComputationGraph *cg, const std::vector<unsigned int> &raw_unigrams,
-              const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
-              const std::vector<unsigned int> &bigrams, const std::vector<unsigned int> &radicals,
-              std::vector<unsigned int> &pred_labels);
+                const std::vector<unsigned int> &raw_bigrams, const std::vector<unsigned int> &unigrams,
+                const std::vector<unsigned int> &bigrams, std::vector<unsigned int> &pred_labels);
 
   void set_valid_trans(const std::vector<std::string> &id2labels);
 
-  void get_valid_labels(std::vector<unsigned int> &cur_valid_labels, unsigned int len, int cur_position,
+  void get_valid_labels(std::vector<unsigned int> &cur_valid_labels, unsigned int len, unsigned int cur_position,
                         std::vector<unsigned int> &pred_labels);
 
   // lookup parameters
@@ -43,7 +39,6 @@ struct GreedyBuilder {
   LookupParameters *p_b;
   LookupParameters *p_pu;
   LookupParameters *p_pb;
-  LookupParameters *p_r;
 
   // lookup parameters to lstm input
   Parameters *p_pu2l;
@@ -51,7 +46,6 @@ struct GreedyBuilder {
   Parameters *p_u2l;
   Parameters *p_b2l;
   Parameters *p_lb;
-  Parameters *p_r2l;
 
   // bilstm
   LSTMBuilder for_lstm;
@@ -77,7 +71,6 @@ struct GreedyBuilder {
   const std::unordered_map<unsigned, std::vector<float>>& obigram_pretrained;
   std::set<unsigned> valid_trans;
   unsigned Bid, Mid, Eid, Sid;
-  bool use_radical;
   Parameters *p_bi2h;
   int B;
   int M;
@@ -96,4 +89,4 @@ struct GreedyBuilder {
   unsigned int UNK_IDX;
 };
 
-#endif  //  end for __GREEDY_H__
+#endif  //  end for __CRF_H__
