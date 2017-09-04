@@ -1,4 +1,4 @@
-# Word-Based Character Embeddings for Chinese word Segmentation
+# Word-Context Character Embeddings for Chinese word Segmentation
 
 ------
 
@@ -68,4 +68,4 @@ Our model could be divided into 2 aspects:
 ------
 
 
-[1]: Hao Zhou, Zhenting Yu, Yue Zhang, Shujian Huang, Xinyu Dai and Jiajun Chen. Word-Based Character Embeddings for Chinese word Segmentation. In Proceeding of EMNLP 2017, short paper.
+[1]: Hao Zhou, Zhenting Yu, Yue Zhang, Shujian Huang, Xinyu Dai and Jiajun Chen. Word-Context Character Embeddings for Chinese word Segmentation. In Proceeding of EMNLP 2017, short paper.
