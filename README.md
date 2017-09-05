@@ -55,7 +55,7 @@ Our model could be divided into 2 aspects:
     	--outfile ctb.test.res \
 
 ## Segmentation Parameters
-./greedy -h
+	./greedy -h
         
 ## Notes:  
 * You can find the sample training data in the data directory.
