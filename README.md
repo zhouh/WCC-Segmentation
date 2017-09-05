@@ -11,9 +11,8 @@ Our model could be divided into 2 aspects:
 * word-based character embedding training code is in the "modified-word2vec" dircectory.
 
 
-## Reguired Software
+## Reguired Softwares
  * CMake
- * [DyNet](https://github.com/clab/dynet)
  * Boost
  * glog
 
