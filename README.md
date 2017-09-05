@@ -55,7 +55,7 @@ Our model could be divided into 2 aspects:
     	--evaluate_stops 2500 \
     	--outfile ctb.test.res \
 
-# Segmentation Parameters
+## Segmentation Parameters
 ./greedy -h
         
 ## Notes:  
