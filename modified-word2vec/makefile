@@ -7,7 +7,7 @@ all: word2vec oseg2vec
 word2vec : word2vec.c
 	$(CC) word2vec.c -o word2vec $(CFLAGS)
 oseg2vec : scs.c
-	$(CC) seg_wang2vec.c -o oseg2vec $(CFLAGS)
+	$(CC) seg2vec.c -o oseg2vec $(CFLAGS)
 #word2phrase : word2phrase.c
 #	$(CC) word2phrase.c -o word2phrase $(CFLAGS)
 #distance : distance.c
